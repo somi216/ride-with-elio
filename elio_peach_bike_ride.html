@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peach Bike Ride</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #1c1c1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap {
+    width: 680px;
+    max-width: 96vw;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 12px;
+    touch-action: none;
+    cursor: pointer;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  }
+  .bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #d8d4c6;
+  }
+  .bar b { color: #fff; font-weight: 600; }
+  .title {
+    color: #e9e2c8;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    text-align: center;
+    opacity: 0.7;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">1983, SUMMER — ITALY</div>
+  <canvas id="gc" width="680" height="380"></canvas>
+  <div class="bar">
+    <span>점수 <b id="scoreOut">0</b></span>
+    <span id="hint">스페이스바 · 탭으로 점프 (돌은 피하고 복숭아는 모아요)</span>
+  </div>
+</div>
+<script>
+(function(){
+const cv=document.getElementById('gc');
+const ctx=cv.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+const W=680,H=380,GROUND=300;
+
+let speed=4.2, dist=0, score=0, over=false, started=false, t=0;
+let jumpV=0, jumpY=0, jumping=false;
+const GRAV=0.62, JUMP_V=-11.5;
+const riderX=130;
+
+function rand(a,b){return a+Math.random()*(b-a);}
+
+let farTrees=[], nearTrees=[], grass=[], obstacles=[];
+function initTrees(){
+  farTrees=[]; for(let x=-40;x<W+80;x+=rand(70,110)) farTrees.push({x,h:rand(28,44)});
+  nearTrees=[]; for(let x=-60;x<W+120;x+=rand(150,220)) nearTrees.push({x,h:rand(70,105)});
+  grass=[]; for(let x=-20;x<W+40;x+=14) grass.push({x,o:rand(0,1)});
+}
+initTrees();
+
+function spawnObstacle(){
+  const type = Math.random()<0.4 ? 'rock' : 'peach';
+  obstacles.push({x:W+40, type, taken:false, bob:rand(0,6.28)});
+}
+let spawnTimer=60;
+
+function reset(){
+  speed=4.2; dist=0; score=0; over=false; jumpV=0; jumpY=0; jumping=false;
+  obstacles=[]; spawnTimer=60; initTrees(); started=true;
+}
+
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'){ e.preventDefault(); doJumpOrStart(); }
+});
+cv.addEventListener('pointerdown', doJumpOrStart);
+
+function doJumpOrStart(){
+  if(!started || over){ reset(); return; }
+  if(!jumping){ jumping=true; jumpV=JUMP_V; }
+}
+
+function skyGrad(){
+  const g=ctx.createLinearGradient(0,0,0,GROUND);
+  g.addColorStop(0,'#dff0e6');
+  g.addColorStop(0.55,'#eef6df');
+  g.addColorStop(1,'#f3ecc8');
+  return g;
+}
+
+function drawTreeCluster(x,groundY,h,dark){
+  const trunkW=Math.max(3,h*0.09);
+  ctx.fillStyle=dark?'#5c4a2e':'#7a5a34';
+  ctx.fillRect(x-trunkW/2, groundY-h*0.55, trunkW, h*0.55);
+  const leaf=dark?'#3f6b3a':'#5c8f4c';
+  const leaf2=dark?'#355c31':'#4f7f41';
+  ctx.fillStyle=leaf;
+  ctx.beginPath(); ctx.ellipse(x, groundY-h*0.55, h*0.42, h*0.5, 0,0,7); ctx.fill();
+  ctx.fillStyle=leaf2;
+  ctx.beginPath(); ctx.ellipse(x-h*0.18, groundY-h*0.65, h*0.26, h*0.3, 0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+h*0.2, groundY-h*0.62, h*0.22, h*0.26, 0,0,7); ctx.fill();
+}
+
+function drawRider(x,y,phase){
+  ctx.save();
+  ctx.translate(x,y);
+  const wob = Math.sin(phase*0.35)*2;
+  ctx.strokeStyle='#3a3a34'; ctx.lineWidth=2.4; ctx.fillStyle='#3a3a34';
+  ctx.beginPath(); ctx.arc(-16,0,15,0,7); ctx.stroke();
+  ctx.beginPath(); ctx.arc(16,0,15,0,7); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-16,0); ctx.lineTo(-2,-24); ctx.lineTo(16,0);
+  ctx.lineTo(-2,-24); ctx.lineTo(-2,-34); ctx.lineTo(10,-38);
+  ctx.moveTo(-2,-24); ctx.lineTo(-8,-40);
+  ctx.stroke();
+  const legAx = Math.sin(phase*0.35)*8, legAy=-Math.cos(phase*0.35)*4;
+  const legBx = Math.sin(phase*0.35+3.14)*8, legBy=-Math.cos(phase*0.35+3.14)*4;
+  ctx.fillStyle='#c98a4b';
+  ctx.fillRect(-3+legBx*0.3,-28+legBy*0.3,7,14);
+  ctx.fillStyle='#e8caa0';
+  ctx.beginPath(); ctx.moveTo(-2,-38); ctx.quadraticCurveTo(-2+legAx,-30+legAy*0.5,2+legAx*1.3,-16+legAy);
+  ctx.lineWidth=6; ctx.lineCap='round'; ctx.strokeStyle='#e8caa0'; ctx.stroke();
+  ctx.fillStyle='#f4efe1';
+  ctx.beginPath(); ctx.moveTo(-8,-40); ctx.lineTo(6,-58); ctx.lineTo(2,-64); ctx.lineTo(-12,-46); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#e7c96a';
+  ctx.fillRect(-14,-52,8,10);
+  ctx.fillStyle='#e6b978';
+  ctx.beginPath(); ctx.arc(6,-70,9,0,7); ctx.fill();
+  ctx.fillStyle='#6b4326';
+  for(const d of [[0,-78],[-6,-76],[8,-74],[-3,-73],[10,-79],[-8,-81]]){
+    ctx.beginPath(); ctx.arc(6+d[0],-70+d[1],4.2,0,7); ctx.fill();
+  }
+  ctx.fillStyle='#3a3a34';
+  ctx.beginPath(); ctx.arc(9,-70,1.1,0,7); ctx.fill();
+  ctx.restore();
+}
+
+function drawObstacle(o){
+  if(o.type==='rock'){
+    ctx.fillStyle='#8a8577';
+    ctx.beginPath(); ctx.ellipse(o.x,GROUND+2,14,9,0,0,7); ctx.fill();
+    ctx.fillStyle='#6f6a5e';
+    ctx.beginPath(); ctx.ellipse(o.x-3,GROUND,7,4.5,0,0,7); ctx.fill();
+  } else if(!o.taken){
+    const b=Math.sin(o.bob)*4;
+    ctx.fillStyle='#e8935a';
+    ctx.beginPath(); ctx.arc(o.x,GROUND-30+b,9,0,7); ctx.fill();
+    ctx.fillStyle='#d9663f';
+    ctx.beginPath(); ctx.arc(o.x-3,GROUND-33+b,5,0,7); ctx.fill();
+    ctx.strokeStyle='#5c8f4c'; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.moveTo(o.x,GROUND-38+b); ctx.lineTo(o.x+2,GROUND-42+b); ctx.stroke();
+  }
+}
+
+function loop(){
+  t++;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=skyGrad(); ctx.fillRect(0,0,W,GROUND+40);
+
+  ctx.fillStyle='rgba(255,244,214,0.55)';
+  ctx.beginPath(); ctx.arc(560,60,34,0,7); ctx.fill();
+
+  ctx.fillStyle='#cfe0b0';
+  ctx.fillRect(0,GROUND-40,W,60);
+  for(const ft of farTrees) drawTreeCluster(ft.x,GROUND-30,ft.h,true);
+
+  ctx.fillStyle='#b7cf8e';
+  ctx.fillRect(0,GROUND-14,W,34);
+  for(const nt of nearTrees) drawTreeCluster(nt.x,GROUND+6,nt.h,false);
+
+  ctx.fillStyle='#cbb98a';
+  ctx.fillRect(0,GROUND,W,H-GROUND);
+  ctx.fillStyle='#d9cfa2';
+  ctx.fillRect(0,GROUND,W,10);
+
+  for(const nt of nearTrees){
+    const sw=nt.h*0.5;
+    ctx.fillStyle='rgba(70,60,30,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(nt.x-6,GROUND+8);
+    ctx.lineTo(nt.x+6,GROUND+8);
+    ctx.lineTo(nt.x+sw+6,GROUND+70);
+    ctx.lineTo(nt.x+sw-6,GROUND+70);
+    ctx.closePath(); ctx.fill();
+  }
+
+  ctx.fillStyle='#3f8f5a';
+  for(const g of grass){
+    const h=6+Math.sin(g.x*0.2+g.o*10)*3;
+    ctx.fillRect(g.x, H-h-4, 3, h);
+  }
+
+  if(started && !over){
+    dist+=speed; speed=Math.min(9,4.2+dist*0.0018);
+    for(const ft of farTrees){ ft.x-=speed*0.35; if(ft.x<-50) ft.x=W+rand(20,80); }
+    for(const nt of nearTrees){ nt.x-=speed*0.85; if(nt.x<-80) nt.x=W+rand(60,140); }
+    for(const g of grass){ g.x-=speed*1.3; if(g.x<-10) g.x=W+10; }
+
+    spawnTimer--;
+    if(spawnTimer<=0){ spawnObstacle(); spawnTimer=rand(55,95)-speed*4; }
+    for(const o of obstacles){ o.x-=speed; if(o.type==='peach') o.bob+=0.12; }
+    obstacles=obstacles.filter(o=>o.x>-40);
+
+    if(jumping){
+      jumpV+=GRAV; jumpY+=jumpV;
+      if(jumpY>=0){ jumpY=0; jumpV=0; jumping=false; }
+    }
+
+    for(const o of obstacles){
+      const dx=Math.abs(o.x-riderX);
+      if(o.type==='rock' && dx<20 && jumpY>-26){ over=true; }
+      if(o.type==='peach' && !o.taken && dx<22){
+        if(Math.abs((GROUND-30+Math.sin(o.bob)*4)-(GROUND-70+jumpY))<30){
+          o.taken=true; score+=10;
+        }
+      }
+    }
+  }
+
+  for(const o of obstacles) drawObstacle(o);
+  drawRider(riderX, GROUND+jumpY, t);
+
+  document.getElementById('scoreOut').textContent=score;
+  const hintEl=document.getElementById('hint');
+  if(!started){ hintEl.textContent='탭하거나 스페이스바를 눌러 출발'; }
+  else if(over){ hintEl.textContent='부딪혔어요 — 다시 탭하면 재시작'; }
+  else{ hintEl.textContent='스페이스바 · 탭으로 점프'; }
+
+  requestAnimationFrame(loop);
+}
+loop();
+})();
+</script>
+</body>
+</html>
